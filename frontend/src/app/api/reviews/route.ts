@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "./auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { reviewsService } from "@coop/backend/server/services/reviews.service";
 import { CreateReviewSchema } from "@coop/backend/server/validators/reviews.schema";
 import { ZodError } from "zod";

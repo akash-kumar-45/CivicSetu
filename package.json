@@ -25,5 +25,8 @@
     "tailwind"
   ],
   "author": "Atharva",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
 }
