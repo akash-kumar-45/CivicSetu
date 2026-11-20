@@ -9,3 +9,6 @@ export * from "./server/services/listings.service";
 export * from "./server/validators/bookings.schema";
 export * from "./server/services/bookings.service";
 export * from "./server/services/ledger.service";
+export * from "./server/validators/reviews.schema";
+export * from "./server/services/reviews.service";
+export * from "./server/services/dashboard.service";
