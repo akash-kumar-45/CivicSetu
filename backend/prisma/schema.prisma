@@ -1,0 +1,168 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  MEMBER
+  ADMIN
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum ListingType {
+  OFFER
+  REQUEST
+}
+
+enum BookingStatus {
+  REQUESTED
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  COMPLETED
+  REVIEWED
+}
+
+model User {
+  id           String       @id @default(uuid())
+  name         String
+  email        String       @unique
+  passwordHash String
+  role         Role         @default(MEMBER)
+  createdAt    DateTime     @default(now())
+
+  // Relations
+  memberships         Membership[]
+  listings            Listing[]
+  requestedBookings   Booking[]     @relation("RequesterBookings")
+  providedBookings    Booking[]     @relation("ProviderBookings")
+  ledgerEntriesSent   LedgerEntry[] @relation("SentLedgerEntries")
+  ledgerEntriesRecv   LedgerEntry[] @relation("ReceivedLedgerEntries")
+  reviewsGiven        Review[]      @relation("ReviewsGiven")
+  reviewsReceived     Review[]      @relation("ReviewsReceived")
+
+  @@map("users")
+}
+
+model CoopGroup {
+  id        String       @id @default(uuid())
+  name      String
+  locality  String
+  createdAt DateTime     @default(now())
+
+  // Relations
+  memberships   Membership[]
+  listings      Listing[]
+  ledgerEntries LedgerEntry[]
+
+  @@map("coop_groups")
+}
+
+model Membership {
+  id        String           @id @default(uuid())
+  userId    String
+  groupId   String
+  status    MembershipStatus @default(PENDING)
+  createdAt DateTime         @default(now())
+
+  // Relations
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group CoopGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([groupId, status])
+  @@map("memberships")
+}
+
+model Listing {
+  id            String      @id @default(uuid())
+  ownerId       String
+  groupId       String
+  type          ListingType
+  category      String
+  title         String
+  description   String
+  hourlyCredits Int
+  active        Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+
+  // Relations
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  group    CoopGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@index([groupId, category, active])
+  @@map("listings")
+}
+
+model Booking {
+  id              String        @id @default(uuid())
+  listingId       String
+  requesterId     String
+  providerId      String
+  startsAt        DateTime
+  durationMinutes Int
+  creditAmount    Int
+  status          BookingStatus @default(REQUESTED)
+  createdAt       DateTime      @default(now())
+
+  // Relations
+  listing     Listing      @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  requester   User         @relation("RequesterBookings", fields: [requesterId], references: [id], onDelete: Cascade)
+  provider    User         @relation("ProviderBookings", fields: [providerId], references: [id], onDelete: Cascade)
+  ledgerEntry LedgerEntry?
+  reviews     Review[]
+
+  @@index([providerId, status, startsAt])
+  @@index([requesterId, status])
+  @@map("bookings")
+}
+
+model LedgerEntry {
+  id         String   @id @default(uuid())
+  groupId    String
+  fromUserId String
+  toUserId   String
+  amount     Int
+  bookingId  String   @unique
+  createdAt  DateTime @default(now())
+
+  // Relations
+  group    CoopGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  fromUser User      @relation("SentLedgerEntries", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User      @relation("ReceivedLedgerEntries", fields: [toUserId], references: [id], onDelete: Cascade)
+  booking  Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@map("ledger_entries")
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  bookingId  String
+  reviewerId String
+  revieweeId String
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  // Relations
+  booking  Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reviewer User    @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewee User    @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, reviewerId])
+  @@index([revieweeId])
+  @@map("reviews")
+}
