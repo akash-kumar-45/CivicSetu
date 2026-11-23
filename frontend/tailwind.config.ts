@@ -1,7 +1,6 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: ["class"],
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -10,24 +9,39 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        midnight: {
-          950: "#020305",
-          900: "#06080c",
-          850: "#0a0d14",
-          800: "#0f131d",
-          700: "#181e2b",
+        // Indian Government Website Color Palette
+        govBlue: {
+          950: "#001a33",
+          900: "#00205B",
+          800: "#003366",
+          700: "#004080",
+          600: "#004d99",
+          500: "#0066cc",
         },
-        lime: {
-          neon: "#00FF66",
-          bright: "#39FF14",
-          electric: "#CCFF00",
-          glow: "rgba(0, 255, 102, 0.25)",
+        saffron: {
+          DEFAULT: "#FF9933",
+          light: "#FFB366",
+          dark: "#E68A2E",
+          glow: "rgba(255, 153, 51, 0.25)",
         },
+        indiaGreen: {
+          DEFAULT: "#138808",
+          light: "#1aa00a",
+          dark: "#0e6606",
+        },
+        cream: "#F5F5F0",
         pureWhite: "#FFFFFF",
+        darkText: "#1a1a1a",
+        bodyText: "#333333",
+        mutedText: "#666666",
+        borderLight: "#DDDDDD",
+        borderMedium: "#CCCCCC",
+        lightBg: "#F0F0F0",
+        lightBlueBg: "#E8F0FE",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        mono: ["var(--font-mono)", "monospace"],
+        sans: ["Calibri", "Trebuchet MS", "system-ui", "sans-serif"],
+        mono: ["Consolas", "monospace"],
       },
       keyframes: {
         float: {
@@ -50,9 +64,11 @@ const config: Config = {
         marquee: "marquee 25s linear infinite",
       },
       boxShadow: {
-        "neon-sm": "0 0 10px rgba(0, 255, 102, 0.35)",
-        "neon-md": "0 0 20px rgba(0, 255, 102, 0.45)",
-        "neon-lg": "0 0 35px rgba(0, 255, 102, 0.55)",
+        "gov-sm": "0 1px 3px rgba(0, 32, 91, 0.12)",
+        "gov-md": "0 4px 12px rgba(0, 32, 91, 0.15)",
+        "gov-lg": "0 8px 25px rgba(0, 32, 91, 0.18)",
+        "saffron-sm": "0 2px 8px rgba(255, 153, 51, 0.2)",
+        "saffron-md": "0 4px 16px rgba(255, 153, 51, 0.3)",
       },
     },
   },

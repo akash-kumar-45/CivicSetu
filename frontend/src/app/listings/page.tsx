@@ -1,558 +1,693 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/shared/Navbar";
 import { Footer } from "@/components/shared/Footer";
-import { Layers, Plus, Clock, Search, Filter, AlertCircle, CheckCircle2, User, Sparkles } from "lucide-react";
+import {
+  MapPin,
+  Lock,
+  Unlock,
+  BadgeCheck,
+  IndianRupee,
+  PlusCircle,
+  Send,
+  Globe,
+  UserCheck,
+  Search,
+  Briefcase,
+  Building2,
+} from "lucide-react";
 
-export default function ListingsPage() {
+const CATEGORIES = [
+  "ALL",
+  "Electrical & Plumbing",
+  "Home Repair & Carpentry",
+  "Cleaning & Sanitization",
+  "Tutoring & Education",
+  "Elder Care & Errands",
+  "Tech & Appliance Help",
+];
+
+function ListingsContent() {
   const { data: session } = useSession();
-  const [groups, setGroups] = useState<any[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
+  const searchParams = useSearchParams();
+  const preselectedWorkerId = searchParams.get("directWorkerId");
+
   const [listings, setListings] = useState<any[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
+  const [trustedWorkers, setTrustedWorkers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [typeFilter, setTypeFilter] = useState<"ALL" | "OFFER" | "REQUEST">("ALL");
-  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+
+  // Filters
+  const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Modals
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showBookingModal, setShowBookingModal] = useState<any>(null);
+  // Create Job Modal State
+  const [showCreateModal, setShowCreateModal] = useState(Boolean(preselectedWorkerId));
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [formData, setFormData] = useState({
+    groupId: "",
+    category: "Electrical & Plumbing",
+    title: "",
+    description: "",
+    hourlyCredits: 350,
+    roughLocation: (session?.user as any)?.ward || "",
+    exactAddress: "",
+    visibility: preselectedWorkerId ? "DIRECT" : "PUBLIC",
+    targetWorkerId: preselectedWorkerId || "",
+  });
 
-  // Create Listing Form State
-  const [newType, setNewType] = useState<"OFFER" | "REQUEST">("OFFER");
-  const [newCategory, setNewCategory] = useState("Cleaning");
-  const [newTitle, setNewTitle] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newHourlyCredits, setNewHourlyCredits] = useState(1);
+  // Apply / Accept Job State
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState("");
 
-  // Booking Request Form State
-  const [bookingStartsAt, setBookingStartsAt] = useState("");
-  const [bookingDuration, setBookingDuration] = useState(60);
-
-  const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
-
-  const categories = [
-    "Cleaning",
-    "Cooking",
-    "Tutoring",
-    "Repairs",
-    "Babysitting",
-    "Gardening",
-    "Elderly Care",
-    "IT & Tech Support",
-  ];
+  const currentUserId = (session?.user as any)?.id;
 
   useEffect(() => {
-    loadGroups();
-  }, []);
+    const timer = setTimeout(() => {
+      fetchInitialData();
+    }, 300);
 
-  const loadGroups = async () => {
+    return () => clearTimeout(timer);
+  }, [selectedCategory, searchQuery, session]);
+
+  const fetchInitialData = async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/groups");
-      if (res.ok) {
-        const data = await res.json();
-        setGroups(data.groups || []);
-        if (data.groups?.length > 0) {
-          const defaultGroup = data.groups.find((g: any) => g.userMembershipStatus === "ACTIVE") || data.groups[0];
-          setSelectedGroupId(defaultGroup.id);
-          loadListings(defaultGroup.id);
-        } else {
-          setLoading(false);
+      const params = new URLSearchParams();
+      if (selectedCategory !== "ALL") params.set("category", selectedCategory);
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
+
+      const [listRes, grpRes, friendsRes] = await Promise.all([
+        fetch(`/api/listings?${params.toString()}`),
+        fetch("/api/groups"),
+        session?.user ? fetch("/api/friends") : Promise.resolve(null),
+      ]);
+
+      if (listRes.ok) {
+        const lData = await listRes.json();
+        setListings(lData.listings || []);
+      }
+
+      if (grpRes.ok) {
+        const gData = await grpRes.json();
+        const activeGroups = (gData.groups || []).filter(
+          (g: any) => g.userMembershipStatus === "ACTIVE"
+        );
+        setGroups(activeGroups);
+        if (activeGroups.length > 0 && !formData.groupId) {
+          setFormData((prev) => ({
+            ...prev,
+            groupId: activeGroups[0].id,
+            roughLocation: prev.roughLocation || activeGroups[0].locality,
+          }));
         }
       }
-    } catch {
-      setLoading(false);
-    }
-  };
 
-  const loadListings = async (groupId: string) => {
-    setLoading(true);
-    setFeedbackError(null);
-    try {
-      const res = await fetch(`/api/listings?groupId=${groupId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setListings(data.listings || []);
-      } else {
-        const err = await res.json();
-        setFeedbackError(err.error || "Must be an active member to view listings");
-        setListings([]);
+      if (friendsRes && friendsRes.ok) {
+        const fData = await friendsRes.json();
+        setTrustedWorkers(fData.trustedWorkers || []);
       }
-    } catch {
-      setFeedbackError("Failed to fetch listings");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGroupChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const gId = e.target.value;
-    setSelectedGroupId(gId);
-    loadListings(gId);
-  };
-
-  const handleCreateListing = async (e: React.FormEvent) => {
+  const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFeedbackError(null);
-    setFeedbackSuccess(null);
+    setSubmitting(true);
+    setFormError("");
 
     try {
       const res = await fetch("/api/listings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          groupId: selectedGroupId,
-          type: newType,
-          category: newCategory,
-          title: newTitle,
-          description: newDescription,
-          hourlyCredits: Number(newHourlyCredits),
+          ...formData,
+          type: "REQUEST",
+          groupId: formData.groupId || null,
+          targetWorkerId:
+            formData.visibility === "DIRECT" ? formData.targetWorkerId : null,
         }),
       });
 
-      if (res.ok) {
-        setShowCreateModal(false);
-        setNewTitle("");
-        setNewDescription("");
-        setNewHourlyCredits(1);
-        setFeedbackSuccess("Listing published to cooperative catalog!");
-        loadListings(selectedGroupId);
-      } else {
-        const data = await res.json();
-        setFeedbackError(data.error || "Failed to create listing");
+      const data = await res.json();
+      if (!res.ok) {
+        const fieldMessages = data.details
+          ? Object.values(data.details).flat().join(" • ")
+          : "";
+        throw new Error(
+          fieldMessages ? `${data.error}: ${fieldMessages}` : data.error || "Failed to post job"
+        );
       }
-    } catch {
-      setFeedbackError("Failed to create listing");
+
+      setToastMsg(data.message);
+      setShowCreateModal(false);
+      setFormData((prev) => ({
+        ...prev,
+        title: "",
+        description: "",
+        exactAddress: "",
+      }));
+      await fetchInitialData();
+    } catch (err: any) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleRequestBooking = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!showBookingModal) return;
-
-    setFeedbackError(null);
-    setFeedbackSuccess(null);
-
+  const handleApplyToJob = async (listing: any) => {
+    setApplyingId(listing.id);
+    setToastMsg("");
     try {
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          listingId: showBookingModal.id,
-          startsAt: new Date(bookingStartsAt).toISOString(),
-          durationMinutes: Number(bookingDuration),
+          listingId: listing.id,
+          startsAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+          durationMinutes: 60,
         }),
       });
-
-      if (res.ok) {
-        setShowBookingModal(null);
-        setFeedbackSuccess("Booking request sent! Check the Bookings tab to track status.");
-      } else {
-        const data = await res.json();
-        setFeedbackError(data.error || "Failed to request booking");
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Could not apply for this job");
       }
-    } catch {
-      setFeedbackError("Error sending booking request");
+      setToastMsg(
+        "Application submitted! Exact address will unlock automatically once the citizen accepts."
+      );
+      await fetchInitialData();
+    } catch (err: any) {
+      setToastMsg(err.message);
+    } finally {
+      setApplyingId(null);
     }
   };
 
-  // Filter listings
-  const filteredListings = listings.filter((l) => {
-    if (typeFilter !== "ALL" && l.type !== typeFilter) return false;
-    if (categoryFilter !== "ALL" && l.category.toLowerCase() !== categoryFilter.toLowerCase()) return false;
-    if (searchQuery.trim() !== "") {
-      const q = searchQuery.toLowerCase();
-      return l.title.toLowerCase().includes(q) || l.description.toLowerCase().includes(q);
-    }
-    return true;
-  });
-
   return (
-    <div className="min-h-screen bg-midnight-950 text-pureWhite flex flex-col">
+    <div className="min-h-screen bg-pureWhite text-darkText flex flex-col pt-16">
       <Navbar />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-10">
-        {/* Header & Controls */}
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-8">
+        {/* Top Banner */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-borderLight">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-lime-neon/10 border border-lime-neon/40 text-lime-neon font-mono text-xs uppercase mb-2">
-              <Layers className="w-3.5 h-3.5" />
-              <span>Time-Credit Service Catalog</span>
-            </div>
-            <h1 className="text-3xl font-black text-pureWhite">Service Listings</h1>
-            <p className="text-xs text-zinc-400 mt-1">
-              Browse household services offered and requested in your cooperative group.
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-saffron/10 border border-saffron/30 text-saffron font-mono text-xs font-bold mb-2">
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>CivicSetu Job Board • ₹0 Commission</span>
+            </span>
+            <h1 className="text-3xl font-black text-govBlue-900">
+              City-Wide Jobs, Ward Tasks & Direct Offers
+            </h1>
+            <p className="text-xs text-mutedText mt-1">
+              Only rough locality is shown publicly. Exact house/street address unlocks strictly after worker selection.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Group Selector */}
-            {groups.length > 0 && (
-              <select
-                value={selectedGroupId}
-                onChange={handleGroupChange}
-                className="px-3 py-2.5 rounded-xl bg-midnight-900 border border-zinc-800 text-xs font-medium text-pureWhite focus:border-lime-neon focus:outline-none"
-              >
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    Co-op: {g.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
+          {session?.user && (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="py-2.5 px-4 rounded-xl bg-lime-neon text-midnight-950 font-bold hover:bg-lime-bright transition shadow-neon-sm flex items-center gap-1.5 text-xs cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-saffron text-pureWhite text-xs font-bold hover:bg-saffron-dark transition shadow-saffron-sm cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>Post New Listing</span>
+              <PlusCircle className="w-4 h-4" />
+              <span>Post a Job / Direct Offer</span>
             </button>
-          </div>
+          )}
         </div>
 
-        {/* Feedback alerts */}
-        {feedbackError && (
-          <div className="mb-6 p-4 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-            <span>{feedbackError}</span>
-          </div>
-        )}
-        {feedbackSuccess && (
-          <div className="mb-6 p-4 rounded-xl bg-lime-950/60 border border-lime-neon/40 text-lime-neon text-xs flex items-center gap-2 shadow-neon-sm">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-lime-neon" />
-            <span>{feedbackSuccess}</span>
+        {toastMsg && (
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-indiaGreen text-xs font-semibold flex items-center justify-between">
+            <span>{toastMsg}</span>
+            <button onClick={() => setToastMsg("")} className="underline ml-4">
+              Dismiss
+            </button>
           </div>
         )}
 
-        {/* Filter Bar */}
-        <div className="p-4 rounded-2xl glass-panel border border-zinc-800 mb-8 flex flex-wrap items-center justify-between gap-4">
+        {/* Search & Category Filter Bar */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                  selectedCategory === cat
+                    ? "bg-govBlue-900 text-pureWhite"
+                    : "bg-lightBg border border-borderLight text-bodyText hover:border-govBlue-800/40"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setTypeFilter("ALL")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-mono transition ${
-                typeFilter === "ALL"
-                  ? "bg-lime-neon text-midnight-950 font-bold"
-                  : "bg-midnight-900 text-zinc-400 hover:text-pureWhite"
-              }`}
-            >
-              ALL
-            </button>
-            <button
-              onClick={() => setTypeFilter("OFFER")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-mono transition ${
-                typeFilter === "OFFER"
-                  ? "bg-lime-neon text-midnight-950 font-bold"
-                  : "bg-midnight-900 text-zinc-400 hover:text-pureWhite"
-              }`}
-            >
-              OFFERS
-            </button>
-            <button
-              onClick={() => setTypeFilter("REQUEST")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-mono transition ${
-                typeFilter === "REQUEST"
-                  ? "bg-lime-neon text-midnight-950 font-bold"
-                  : "bg-midnight-900 text-zinc-400 hover:text-pureWhite"
-              }`}
-            >
-              REQUESTS
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 flex-1 max-w-md">
-            <div className="relative w-full">
-              <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <div className="relative flex-1 md:w-64">
+              <Search className="w-4 h-4 text-mutedText absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search listings..."
+                placeholder="Search title or ward..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-midnight-900 border border-zinc-800 text-xs text-pureWhite focus:border-lime-neon focus:outline-none"
+                onKeyDown={(e) => e.key === "Enter" && fetchInitialData()}
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-lightBg border border-borderLight text-xs focus:border-govBlue-800 focus:outline-none"
               />
             </div>
-
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-midnight-900 border border-zinc-800 text-xs font-medium text-pureWhite focus:border-lime-neon focus:outline-none"
+            <button
+              onClick={fetchInitialData}
+              className="px-4 py-2 rounded-xl bg-govBlue-900 text-pureWhite text-xs font-bold cursor-pointer"
             >
-              <option value="ALL">All Categories</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              Filter
+            </button>
           </div>
         </div>
 
-        {/* Listings Grid */}
+        {/* Jobs Grid */}
         {loading ? (
-          <div className="py-20 text-center font-mono text-xs text-zinc-500">
-            Querying listings within co-op group...
+          <div className="py-16 text-center text-xs font-mono text-mutedText">
+            Loading verified jobs...
           </div>
-        ) : filteredListings.length === 0 ? (
-          <div className="py-20 text-center rounded-3xl glass-panel border border-zinc-800">
-            <Layers className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-pureWhite">No service listings found</h3>
-            <p className="text-xs text-zinc-400 mt-1 mb-4">
-              Be the first to offer or request household services in this group.
+        ) : listings.length === 0 ? (
+          <div className="py-16 text-center rounded-3xl gov-panel border border-borderLight">
+            <Briefcase className="w-9 h-9 text-mutedText mx-auto mb-2" />
+            <p className="text-sm font-bold text-darkText">No active jobs found in this filter</p>
+            <p className="text-xs text-mutedText mt-1">
+              Post a new requirement open to all workers or switch category filters.
             </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="py-2.5 px-4 rounded-xl bg-lime-neon text-midnight-950 font-bold text-xs"
-            >
-              Create Listing
-            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredListings.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl glass-panel-lime border border-lime-neon/20 p-6 flex flex-col justify-between hover:border-lime-neon/50 transition shadow-sm"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider ${
-                        item.type === "OFFER"
-                          ? "bg-lime-neon/20 text-lime-neon border border-lime-neon/40"
-                          : "bg-blue-500/20 text-blue-400 border border-blue-500/40"
-                      }`}
-                    >
-                      {item.type}
-                    </span>
-                    <span className="text-[11px] font-mono text-zinc-400 uppercase">
-                      {item.category}
-                    </span>
+            {listings.map((job) => {
+              const isDirectOffer = job.visibility === "DIRECT";
+              const isWardOnly = job.visibility === "WARD_ONLY";
+              const isMyJob = currentUserId && job.ownerId === currentUserId;
+
+              return (
+                <div
+                  key={job.id}
+                  className={`rounded-3xl p-6 border flex flex-col justify-between transition ${
+                    isDirectOffer
+                      ? "bg-saffron/5 border-saffron/50 shadow-saffron-sm"
+                      : "gov-panel border-borderLight"
+                  }`}
+                >
+                  <div>
+                    {/* Visibility & Category Badges */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                      <span className="px-2.5 py-1 rounded-lg bg-lightBg border border-borderLight text-[11px] font-mono font-semibold text-govBlue-900">
+                        {job.category}
+                      </span>
+
+                      {isDirectOffer ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-saffron text-pureWhite text-[11px] font-mono font-bold">
+                          <Send className="w-3 h-3" />
+                          {isMyJob
+                            ? `Direct to ${job.targetWorker?.name || "Friend"}`
+                            : "Private Direct Offer"}
+                        </span>
+                      ) : isWardOnly ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-mono font-semibold">
+                          <Building2 className="w-3 h-3" /> Ward Only
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-govBlue-900 text-[11px] font-mono font-semibold">
+                          <Globe className="w-3 h-3" /> Open to All Users
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-lg font-bold text-govBlue-900 mb-2">{job.title}</h3>
+                    <p className="text-xs text-bodyText leading-relaxed mb-4">
+                      {job.description}
+                    </p>
+
+                    {/* Two-Stage Location Privacy Box */}
+                    <div className="p-3 rounded-2xl bg-lightBg border border-borderLight mb-4 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-darkText">
+                        <MapPin className="w-3.5 h-3.5 text-saffron shrink-0" />
+                        <span>Area: {job.roughLocation}</span>
+                      </div>
+
+                      {job.isAddressUnlocked && job.exactAddress ? (
+                        <div className="flex items-start gap-1.5 text-[11px] font-mono text-indiaGreen font-semibold">
+                          <Unlock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                          <span>Exact Address: {job.exactAddress}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[11px] font-mono text-mutedText">
+                          <Lock className="w-3.5 h-3.5 shrink-0" />
+                          <span>Exact address locked until worker accepted</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <h3 className="text-lg font-bold text-pureWhite mb-2">{item.title}</h3>
-                  <p className="text-xs text-zinc-300 leading-relaxed line-clamp-3 mb-4">
-                    {item.description}
-                  </p>
-                </div>
-
-                <div>
-                  <div className="pt-3 border-t border-zinc-800 flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-                      <User className="w-3.5 h-3.5 text-lime-neon" />
-                      <span>{item.owner?.name || "Member"}</span>
+                  {/* Footer: Payout & Action */}
+                  <div className="pt-4 border-t border-borderLight flex items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[10px] font-mono uppercase text-mutedText block">
+                        Direct Payout (₹0 Fee)
+                      </span>
+                      <span className="text-lg font-black font-mono text-indiaGreen flex items-center">
+                        <IndianRupee className="w-4 h-4" />
+                        {job.hourlyCredits}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-1 font-mono text-sm font-bold text-lime-neon">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>{item.hourlyCredits} C/hr</span>
+                    <div className="text-right">
+                      <div className="flex items-center justify-end gap-1 text-[11px] text-mutedText mb-1.5">
+                        <span>{job.owner?.name}</span>
+                        {job.owner?.isVerified && (
+                          <BadgeCheck className="w-3.5 h-3.5 text-indiaGreen" />
+                        )}
+                      </div>
+
+                      {!session?.user ? (
+                        <span className="text-[11px] font-mono text-mutedText">
+                          Sign in to apply
+                        </span>
+                      ) : isMyJob ? (
+                        <span className="inline-block px-3 py-1.5 rounded-xl bg-lightBg border border-borderLight text-xs font-mono font-semibold text-govBlue-900">
+                          Your Posting
+                        </span>
+                      ) : job.userBookingStatus === "REQUESTED" ? (
+                        <span className="inline-block px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-mono font-bold text-amber-700">
+                          Applied (Pending)
+                        </span>
+                      ) : job.userBookingStatus === "ACCEPTED" ? (
+                        <span className="inline-block px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-indiaGreen">
+                          Hired (Active)
+                        </span>
+                      ) : (
+                        <button
+                          disabled={applyingId === job.id}
+                          onClick={() => handleApplyToJob(job)}
+                          className="px-4 py-2 rounded-xl bg-saffron text-pureWhite text-xs font-bold hover:bg-saffron-dark transition disabled:opacity-50 cursor-pointer"
+                        >
+                          {applyingId === job.id
+                            ? "Sending..."
+                            : isDirectOffer
+                            ? "Accept Direct Offer"
+                            : "Apply for Work"}
+                        </button>
+                      )}
                     </div>
                   </div>
-
-                  {item.ownerId !== (session?.user as any)?.id ? (
-                    <button
-                      onClick={() => setShowBookingModal(item)}
-                      className="w-full py-2.5 px-4 rounded-xl bg-lime-neon text-midnight-950 font-bold hover:bg-lime-bright transition text-xs shadow-neon-sm cursor-pointer"
-                    >
-                      {item.type === "OFFER" ? "Book This Service" : "Offer to Fulfill Request"}
-                    </button>
-                  ) : (
-                    <div className="w-full py-2 rounded-xl bg-midnight-900 border border-zinc-800 text-center text-xs font-mono text-zinc-500">
-                      Your Listing (Owner)
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
+      </main>
 
-        {/* Modal: Create Listing */}
-        {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-midnight-950/80 backdrop-blur-md">
-            <div className="w-full max-w-lg p-6 rounded-3xl glass-panel-lime border border-lime-neon/40 shadow-neon-md">
-              <h3 className="text-xl font-bold text-pureWhite mb-1">Create Service Listing</h3>
-              <p className="text-xs text-zinc-400 mb-4">
-                List an OFFER (service you can provide) or REQUEST (service you need).
-              </p>
+      {/* Create Job / Direct Offer Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-pureWhite rounded-3xl max-w-lg w-full p-6 sm:p-8 border border-borderLight shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-black text-govBlue-900">
+                Post Work or Direct Offer
+              </h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-xs font-mono text-mutedText hover:text-darkText cursor-pointer"
+              >
+                ✕ Close
+              </button>
+            </div>
 
-              <form onSubmit={handleCreateListing} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-mono text-zinc-300 uppercase mb-1">Listing Type</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setNewType("OFFER")}
-                      className={`py-2 px-3 rounded-lg text-xs font-semibold border transition ${
-                        newType === "OFFER"
-                          ? "bg-lime-neon text-midnight-950 border-lime-neon font-bold"
-                          : "bg-midnight-900 text-zinc-400 border-zinc-800"
-                      }`}
-                    >
-                      OFFER (I will provide)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNewType("REQUEST")}
-                      className={`py-2 px-3 rounded-lg text-xs font-semibold border transition ${
-                        newType === "REQUEST"
-                          ? "bg-blue-500 text-white border-blue-500 font-bold"
-                          : "bg-midnight-900 text-zinc-400 border-zinc-800"
-                      }`}
-                    >
-                      REQUEST (I need help)
-                    </button>
-                  </div>
-                </div>
+            {formError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs">
+                {formError}
+              </div>
+            )}
 
-                <div>
-                  <label className="block text-xs font-mono text-zinc-300 uppercase mb-1">Category</label>
-                  <select
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-midnight-900 border border-zinc-800 text-xs text-pureWhite focus:border-lime-neon focus:outline-none"
+            <form onSubmit={handleCreateJob} className="space-y-4">
+              {/* 3-Option Audience Visibility Selector */}
+              <div>
+                <label className="block text-xs font-mono font-bold uppercase text-mutedText mb-1.5">
+                  Who Can See & Apply For This Job?
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, visibility: "PUBLIC", targetWorkerId: "" })
+                    }
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                      formData.visibility === "PUBLIC"
+                        ? "border-govBlue-900 bg-govBlue-900/5"
+                        : "border-borderLight bg-lightBg"
+                    }`}
                   >
-                    {categories.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-govBlue-900">
+                      <Globe className="w-3.5 h-3.5 text-saffron shrink-0" />
+                      <span>All Users</span>
+                    </div>
+                    <p className="text-[10px] text-mutedText mt-0.5">
+                      City-wide; open to any verified worker
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, visibility: "WARD_ONLY", targetWorkerId: "" })
+                    }
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                      formData.visibility === "WARD_ONLY"
+                        ? "border-govBlue-900 bg-govBlue-900/5"
+                        : "border-borderLight bg-lightBg"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-govBlue-900">
+                      <Building2 className="w-3.5 h-3.5 text-govBlue-800 shrink-0" />
+                      <span>Ward Only</span>
+                    </div>
+                    <p className="text-[10px] text-mutedText mt-0.5">
+                      Only members of your ward/RWA
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, visibility: "DIRECT" })}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                      formData.visibility === "DIRECT"
+                        ? "border-saffron bg-saffron/10"
+                        : "border-borderLight bg-lightBg"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-govBlue-900">
+                      <UserCheck className="w-3.5 h-3.5 text-indiaGreen shrink-0" />
+                      <span>Direct Friend</span>
+                    </div>
+                    <p className="text-[10px] text-mutedText mt-0.5">
+                      Private offer to 1 trusted worker
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Trusted Worker Dropdown (Shown only when DIRECT is chosen) */}
+              {formData.visibility === "DIRECT" && (
+                <div>
+                  <label className="block text-xs font-mono font-bold text-govBlue-900 mb-1">
+                    Select Trusted Worker (Friend) *
+                  </label>
+                  {trustedWorkers.length === 0 ? (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 p-2.5 rounded-xl">
+                      You have no accepted trusted workers yet. Add a worker to your Trusted Circle from your hires or ward directory first.
+                    </p>
+                  ) : (
+                    <select
+                      required
+                      value={formData.targetWorkerId}
+                      onChange={(e) =>
+                        setFormData({ ...formData, targetWorkerId: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-lightBg border border-borderLight text-xs font-medium"
+                    >
+                      <option value="">-- Choose a saved worker --</option>
+                      {trustedWorkers
+                        .filter(
+                          (w) => w.userIntent === "WORKER" || w.userIntent === "BOTH"
+                        )
+                        .map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} ({w.ward}) {w.skills?.length ? `• ${w.skills.join(", ")}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Ward / Group Selector (Required only for WARD_ONLY; optional otherwise) */}
+              {groups.length > 0 && (
+                <div>
+                  <label className="block text-xs font-mono font-bold text-mutedText mb-1">
+                    Local Ward / Society {formData.visibility === "WARD_ONLY" ? "*" : "(Optional)"}
+                  </label>
+                  <select
+                    required={formData.visibility === "WARD_ONLY"}
+                    value={formData.groupId}
+                    onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-lightBg border border-borderLight text-xs"
+                  >
+                    {formData.visibility !== "WARD_ONLY" && (
+                      <option value="">-- All Wards / No Specific Society --</option>
+                    )}
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} ({g.locality})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-mono font-bold text-mutedText mb-1">
+                    Category *
+                  </label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-lightBg border border-borderLight text-xs"
+                  >
+                    {CATEGORIES.filter((c) => c !== "ALL").map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
                       </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-zinc-300 uppercase mb-1">Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder="e.g. Mathematics & Calculus Tutoring"
-                    className="w-full px-3 py-2 rounded-lg bg-midnight-900 border border-zinc-800 text-xs text-pureWhite focus:border-lime-neon focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-mono text-zinc-300 uppercase mb-1">Description</label>
-                  <textarea
-                    required
-                    rows={3}
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                    placeholder="Detailed explanation of the task or assistance needed..."
-                    className="w-full px-3 py-2 rounded-lg bg-midnight-900 border border-zinc-800 text-xs text-pureWhite focus:border-lime-neon focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-mono text-zinc-300 uppercase mb-1">
-                    Hourly Time Credits (Integer only)
+                  <label className="block text-xs font-mono font-bold text-mutedText mb-1">
+                    Direct Worker Payout (₹) *
                   </label>
                   <input
                     type="number"
-                    min={1}
-                    max={10}
+                    min={50}
                     required
-                    value={newHourlyCredits}
-                    onChange={(e) => setNewHourlyCredits(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full px-3 py-2 rounded-lg bg-midnight-900 border border-zinc-800 text-xs text-pureWhite focus:border-lime-neon focus:outline-none"
+                    value={formData.hourlyCredits}
+                    onChange={(e) =>
+                      setFormData({ ...formData, hourlyCredits: Number(e.target.value) })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-lightBg border border-borderLight text-xs font-mono"
                   />
-                  <span className="text-[10px] text-zinc-500 mt-1 block">
-                    1 Credit corresponds to 1 hour of labor. Integers only.
-                  </span>
                 </div>
+              </div>
 
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="flex-1 py-2.5 rounded-lg bg-midnight-900 border border-zinc-800 text-xs text-zinc-400"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 rounded-lg bg-lime-neon text-midnight-950 font-bold hover:bg-lime-bright text-xs shadow-neon-sm"
-                  >
-                    Publish Listing
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+              <div>
+                <label className="block text-xs font-mono font-bold text-mutedText mb-1">
+                  Job Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ceiling fan regulator replacement & wiring check"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-lightBg border border-borderLight text-xs"
+                />
+              </div>
 
-        {/* Modal: Request Booking */}
-        {showBookingModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-midnight-950/80 backdrop-blur-md">
-            <div className="w-full max-w-md p-6 rounded-3xl glass-panel-lime border border-lime-neon/40 shadow-neon-md">
-              <h3 className="text-xl font-bold text-pureWhite mb-1">Schedule Booking</h3>
-              <p className="text-xs text-zinc-400 mb-4">
-                Service: <span className="text-lime-neon font-medium">{showBookingModal.title}</span> ({showBookingModal.hourlyCredits} Credits/hr)
-              </p>
+              <div>
+                <label className="block text-xs font-mono font-bold text-mutedText mb-1">
+                  Work Description *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Describe tools needed, preferred timing, and scope of work..."
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-lightBg border border-borderLight text-xs"
+                />
+              </div>
 
-              <form onSubmit={handleRequestBooking} className="space-y-4">
+              {/* Two-Stage Location Inputs */}
+              <div className="p-3.5 rounded-2xl bg-lightBg border border-borderLight space-y-3">
                 <div>
-                  <label className="block text-xs font-mono text-zinc-300 uppercase mb-1">
-                    Service Date & Time
+                  <label className="block text-xs font-mono font-bold text-govBlue-900 mb-1">
+                    Stage 1: Public Rough Locality / Area *
                   </label>
                   <input
-                    type="datetime-local"
+                    type="text"
                     required
-                    value={bookingStartsAt}
-                    onChange={(e) => setBookingStartsAt(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-midnight-900 border border-zinc-800 text-xs text-pureWhite focus:border-lime-neon focus:outline-none"
+                    placeholder="e.g. Gomti Nagar, Lucknow (Visible publicly)"
+                    value={formData.roughLocation}
+                    onChange={(e) =>
+                      setFormData({ ...formData, roughLocation: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2 rounded-xl bg-pureWhite border border-borderLight text-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-zinc-300 uppercase mb-1">
-                    Duration in Minutes
+                  <label className="block text-xs font-mono font-bold text-indiaGreen mb-1">
+                    Stage 2: Private Exact Address (Locked until worker hired) *
                   </label>
-                  <select
-                    value={bookingDuration}
-                    onChange={(e) => setBookingDuration(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-lg bg-midnight-900 border border-zinc-800 text-xs text-pureWhite focus:border-lime-neon focus:outline-none"
-                  >
-                    <option value={30}>30 minutes</option>
-                    <option value={60}>60 minutes (1 hour)</option>
-                    <option value={90}>90 minutes (1.5 hours)</option>
-                    <option value={120}>120 minutes (2 hours)</option>
-                    <option value={180}>180 minutes (3 hours)</option>
-                  </select>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. House 4/112, Vibhav Khand, Near Park"
+                    value={formData.exactAddress}
+                    onChange={(e) =>
+                      setFormData({ ...formData, exactAddress: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2 rounded-xl bg-pureWhite border border-borderLight text-xs"
+                  />
                 </div>
+              </div>
 
-                <div className="p-3 rounded-xl bg-midnight-900 border border-zinc-800 flex items-center justify-between text-xs font-mono">
-                  <span className="text-zinc-400">Total Credits Needed:</span>
-                  <span className="font-bold text-lime-neon">
-                    {Math.max(1, Math.round((bookingDuration / 60) * showBookingModal.hourlyCredits))} Credits
-                  </span>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowBookingModal(null)}
-                    className="flex-1 py-2.5 rounded-lg bg-midnight-900 border border-zinc-800 text-xs text-zinc-400"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 rounded-lg bg-lime-neon text-midnight-950 font-bold hover:bg-lime-bright text-xs shadow-neon-sm"
-                  >
-                    Send Booking Request
-                  </button>
-                </div>
-              </form>
-            </div>
+              <button
+                type="submit"
+                disabled={
+                  submitting ||
+                  (formData.visibility === "DIRECT" && !formData.targetWorkerId)
+                }
+                className="w-full py-3 rounded-xl bg-saffron text-pureWhite text-xs font-bold hover:bg-saffron-dark transition disabled:opacity-50 cursor-pointer"
+              >
+                {submitting
+                  ? "Publishing..."
+                  : formData.visibility === "DIRECT"
+                  ? "Send Private Direct Job Offer"
+                  : formData.visibility === "WARD_ONLY"
+                  ? "Post Job to Ward Only"
+                  : "Post Job Open to All Users"}
+              </button>
+            </form>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
       <Footer />
     </div>
+  );
+}
+
+export default function ListingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-cream flex items-center justify-center text-xs font-mono text-mutedText">
+          Loading CivicSetu local jobs...
+        </div>
+      }
+    >
+      <ListingsContent />
+    </Suspense>
   );
 }

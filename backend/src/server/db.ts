@@ -1,13 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-// Global singleton for PrismaClient
-declare global {
-  // eslint-disable-next-line no-var
-  var prismaGlobal: PrismaClient | undefined;
-  // eslint-disable-next-line no-var
-  var memoryStoreGlobal: any | undefined;
-}
+const globalForPrisma = globalThis as unknown as {
+  prismaGlobal: PrismaClient | undefined;
+  memoryStoreGlobal: InMemoryPrismaStore | undefined;
+};
 
 // In-Memory database store for seamless local execution and demonstration
 class InMemoryPrismaStore {
@@ -223,7 +220,7 @@ class InMemoryPrismaStore {
 
   // User queries
   user = {
-    findUnique: async ({ where }: any) => {
+    findUnique: async ({ where = {} }: any = {}) => {
       if (where.email) {
         return Array.from(this.users.values()).find((u) => u.email.toLowerCase() === where.email.toLowerCase()) || null;
       }
@@ -249,7 +246,7 @@ class InMemoryPrismaStore {
 
   // CoopGroup queries
   coopGroup = {
-    findUnique: async ({ where }: any) => {
+    findUnique: async ({ where = {} }: any = {}) => {
       const group = this.coopGroups.get(where.id);
       if (!group) return null;
       const memberships = Array.from(this.memberships.values())
@@ -298,7 +295,7 @@ class InMemoryPrismaStore {
 
   // Membership queries
   membership = {
-    findUnique: async ({ where }: any) => {
+    findUnique: async ({ where = {} }: any = {}) => {
       const key = where.userId_groupId ? `${where.userId_groupId.userId}_${where.userId_groupId.groupId}` : null;
       const m = key ? this.memberships.get(key) : null;
       if (m) {
@@ -307,7 +304,7 @@ class InMemoryPrismaStore {
       }
       return null;
     },
-    findMany: async ({ where }: any) => {
+    findMany: async ({ where = {} }: any = {}) => {
       return Array.from(this.memberships.values()).filter((m) => {
         if (where.groupId && m.groupId !== where.groupId) return false;
         if (where.userId && m.userId !== where.userId) return false;
@@ -334,7 +331,7 @@ class InMemoryPrismaStore {
       this.memberships.delete(key);
       return {};
     },
-    count: async ({ where }: any) => {
+    count: async ({ where = {} }: any = {}) => {
       return Array.from(this.memberships.values()).filter((m) => {
         if (where.groupId && m.groupId !== where.groupId) return false;
         if (where.status && m.status !== where.status) return false;
@@ -345,7 +342,7 @@ class InMemoryPrismaStore {
 
   // Listing queries
   listing = {
-    findUnique: async ({ where }: any) => {
+    findUnique: async ({ where = {} }: any = {}) => {
       const l = this.listings.get(where.id);
       if (!l) return null;
       return {
@@ -354,7 +351,7 @@ class InMemoryPrismaStore {
         group: this.coopGroups.get(l.groupId),
       };
     },
-    findMany: async ({ where }: any) => {
+    findMany: async ({ where = {} }: any = {}) => {
       return Array.from(this.listings.values())
         .filter((l) => {
           if (where.groupId && l.groupId !== where.groupId) return false;
@@ -381,7 +378,7 @@ class InMemoryPrismaStore {
       this.listings.set(where.id, updated);
       return updated;
     },
-    count: async ({ where }: any) => {
+    count: async ({ where = {} }: any = {}) => {
       return Array.from(this.listings.values()).filter((l) => {
         if (where.groupId && l.groupId !== where.groupId) return false;
         if (where.active !== undefined && l.active !== where.active) return false;
@@ -392,7 +389,7 @@ class InMemoryPrismaStore {
 
   // Booking queries
   booking = {
-    findUnique: async ({ where }: any) => {
+    findUnique: async ({ where = {} }: any = {}) => {
       const b = this.bookings.get(where.id);
       if (!b) return null;
       return {
@@ -404,7 +401,7 @@ class InMemoryPrismaStore {
         reviews: Array.from(this.reviews.values()).filter((r) => r.bookingId === b.id),
       };
     },
-    findMany: async ({ where }: any) => {
+    findMany: async ({ where = {} }: any = {}) => {
       return Array.from(this.bookings.values())
         .filter((b) => {
           if (where.providerId && b.providerId !== where.providerId) return false;
@@ -448,7 +445,7 @@ class InMemoryPrismaStore {
       this.bookings.set(where.id, updated);
       return updated;
     },
-    count: async ({ where }: any) => {
+    count: async ({ where = {} }: any = {}) => {
       return Array.from(this.bookings.values()).filter((b) => {
         if (where.listing?.groupId) {
           const l = this.listings.get(b.listingId);
@@ -462,7 +459,7 @@ class InMemoryPrismaStore {
 
   // Ledger queries
   ledgerEntry = {
-    findMany: async ({ where }: any) => {
+    findMany: async ({ where = {} }: any = {}) => {
       return Array.from(this.ledgerEntries.values())
         .filter((tx) => {
           if (where.groupId && tx.groupId !== where.groupId) return false;
@@ -495,14 +492,14 @@ class InMemoryPrismaStore {
 
   // Review queries
   review = {
-    findUnique: async ({ where }: any) => {
+    findUnique: async ({ where = {} }: any = {}) => {
       if (where.bookingId_reviewerId) {
         const key = `${where.bookingId_reviewerId.bookingId}_${where.bookingId_reviewerId.reviewerId}`;
         return this.reviews.get(key) || null;
       }
       return null;
     },
-    findMany: async ({ where }: any) => {
+    findMany: async ({ where = {} }: any = {}) => {
       return Array.from(this.reviews.values())
         .filter((r) => {
           if (where.revieweeId && r.revieweeId !== where.revieweeId) return false;
@@ -534,26 +531,27 @@ class InMemoryPrismaStore {
   };
 }
 
-const memoryStore = globalThis.memoryStoreGlobal ?? new InMemoryPrismaStore();
+const memoryStore = globalForPrisma.memoryStoreGlobal ?? new InMemoryPrismaStore();
 if (process.env.NODE_ENV !== "production") {
-  globalThis.memoryStoreGlobal = memoryStore;
+  globalForPrisma.memoryStoreGlobal = memoryStore;
 }
 
 // Check whether a valid remote PostgreSQL database is configured
-const hasPostgresUrl =
+const hasPostgresUrl = Boolean(
   process.env.DATABASE_URL &&
-  !process.env.DATABASE_URL.includes("ep-sample-pooler") &&
-  !process.env.DATABASE_URL.includes("localhost:5432");
+    !process.env.DATABASE_URL.includes("ep-sample-pooler") &&
+    !process.env.DATABASE_URL.includes("localhost:5432")
+);
 
 export const prisma: any = hasPostgresUrl
-  ? globalThis.prismaGlobal ??
+  ? globalForPrisma.prismaGlobal ??
     new PrismaClient({
       log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
     })
   : memoryStore;
 
 if (hasPostgresUrl && process.env.NODE_ENV !== "production") {
-  globalThis.prismaGlobal = prisma;
+  globalForPrisma.prismaGlobal = prisma;
 }
 
 export default prisma;

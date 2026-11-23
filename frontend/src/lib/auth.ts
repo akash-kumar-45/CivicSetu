@@ -11,7 +11,7 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "Email and Password",
       credentials: {
-        email: { label: "Email", type: "email", placeholder: "you@example.com" },
+        email: { label: "Email", type: "email", placeholder: "citizen@civicsetu.in" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
@@ -34,6 +34,11 @@ export const authOptions: NextAuthOptions = {
             name: user.name,
             email: user.email,
             role: user.role,
+            userIntent: user.userIntent,
+            ward: user.ward,
+            phone: user.phone,
+            isVerified: user.isVerified,
+            skills: user.skills,
           };
         } catch {
           return null;
@@ -42,10 +47,22 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role;
+        token.userIntent = (user as any).userIntent;
+        token.ward = (user as any).ward;
+        token.phone = (user as any).phone;
+        token.isVerified = (user as any).isVerified;
+        token.skills = (user as any).skills;
+      }
+      if (trigger === "update" && session?.user) {
+        token.name = session.user.name ?? token.name;
+        token.ward = session.user.ward ?? token.ward;
+        token.phone = session.user.phone ?? token.phone;
+        token.userIntent = session.user.userIntent ?? token.userIntent;
+        token.skills = session.user.skills ?? token.skills;
       }
       return token;
     },
@@ -53,6 +70,11 @@ export const authOptions: NextAuthOptions = {
       if (token && session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
+        (session.user as any).userIntent = token.userIntent;
+        (session.user as any).ward = token.ward;
+        (session.user as any).phone = token.phone;
+        (session.user as any).isVerified = token.isVerified;
+        (session.user as any).skills = token.skills;
       }
       return session;
     },

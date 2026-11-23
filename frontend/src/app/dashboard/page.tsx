@@ -3,17 +3,30 @@
 import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Navbar } from "@/components/shared/Navbar";
 import { Footer } from "@/components/shared/Footer";
-import { Clock, ShieldCheck, Star, Users, ArrowUpRight, ArrowDownLeft, AlertCircle, Sparkles } from "lucide-react";
+import {
+  ShieldCheck,
+  Star,
+  Users,
+  ArrowUpRight,
+  ArrowDownLeft,
+  BadgeCheck,
+  MapPin,
+  Briefcase,
+  PlusCircle,
+  IndianRupee,
+  ClipboardCheck,
+} from "lucide-react";
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [balance, setBalance] = useState<number>(0);
-  const [ledgerHistory, setLedgerHistory] = useState<any[]>([]);
+  const [totalSettled, setTotalSettled] = useState<number>(0);
+  const [settlementHistory, setSettlementHistory] = useState<any[]>([]);
   const [ratingSummary, setRatingSummary] = useState<any>({ averageRating: 0, totalReviews: 0 });
   const [groups, setGroups] = useState<any[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
@@ -34,15 +47,17 @@ export default function DashboardPage() {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Load user balance and ledger history
+      // Load direct payout/settlement logs from existing ledger endpoint
       const res = await fetch("/api/ledger");
       if (res.ok) {
         const data = await res.json();
-        setBalance(data.balance || 0);
-        setLedgerHistory(data.history || []);
+        const history = data.history || [];
+        setSettlementHistory(history);
+        const volume = history.reduce((acc: number, tx: any) => acc + (tx.amount || 0), 0);
+        setTotalSettled(volume);
       }
 
-      // Load user rating
+      // Load mutual user rating
       const userId = (session?.user as any)?.id;
       if (userId) {
         const revRes = await fetch(`/api/reviews?userId=${userId}`);
@@ -52,19 +67,20 @@ export default function DashboardPage() {
         }
       }
 
-      // Load groups list
+      // Load local wards / groups list
       const groupRes = await fetch("/api/groups");
       if (groupRes.ok) {
         const gData = await groupRes.json();
         setGroups(gData.groups || []);
         if (gData.groups?.length > 0) {
-          const activeGroup = gData.groups.find((g: any) => g.userMembershipStatus === "ACTIVE") || gData.groups[0];
+          const activeGroup =
+            gData.groups.find((g: any) => g.userMembershipStatus === "ACTIVE") || gData.groups[0];
           setSelectedGroupId(activeGroup.id);
           loadGroupStats(activeGroup.id);
         }
       }
     } catch (e) {
-      console.error("Failed to load dashboard data", e);
+      console.error("Failed to load civic dashboard data", e);
     } finally {
       setLoading(false);
     }
@@ -90,35 +106,65 @@ export default function DashboardPage() {
     loadGroupStats(gId);
   };
 
+  const user = session?.user as any;
+  const userIntentLabel =
+    user?.userIntent === "OWNER"
+      ? "Citizen (Hiring)"
+      : user?.userIntent === "WORKER"
+      ? "Local Worker"
+      : "Citizen & Worker";
+
   return (
-    <div className="min-h-screen bg-midnight-950 text-pureWhite flex flex-col">
+    <div className="min-h-screen bg-pureWhite text-darkText flex flex-col pt-16">
       <Navbar />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-10">
         {/* Header */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 pb-6 border-b border-zinc-800">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-8 pb-6 border-b border-borderLight">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-lime-neon/10 border border-lime-neon/40 text-lime-neon font-mono text-xs uppercase mb-2">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Cooperative Member Profile</span>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-indiaGreen font-mono text-xs font-bold">
+                <BadgeCheck className="w-3.5 h-3.5" />
+                <span>{user?.isVerified !== false ? "Gov-ID e-KYC Verified" : "Pending e-KYC"}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-saffron/10 border border-saffron/30 text-saffron font-mono text-xs font-semibold">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>{user?.ward || "Local Ward"}</span>
+              </span>
             </div>
-            <h1 className="text-3xl font-black text-pureWhite">
-              {(session?.user as any)?.name || "Member"} Dashboard
+
+            <h1 className="text-3xl font-black text-govBlue-900">
+              {user?.name || "Citizen"}&apos;s Civic Hub
             </h1>
-            <p className="text-xs text-zinc-400 mt-1">
-              Role: <span className="font-mono text-lime-neon">{(session?.user as any)?.role || "MEMBER"}</span> •
-              Email: <span className="font-mono text-zinc-300">{session?.user?.email}</span>
+            <p className="text-xs text-mutedText mt-1">
+              Mode: <span className="font-mono font-semibold text-saffron">{userIntentLabel}</span> •
+              Email: <span className="font-mono text-bodyText">{session?.user?.email}</span>
             </p>
           </div>
 
-          {/* Group Stats Selector */}
-          {groups.length > 0 && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-mono text-zinc-400">Co-op Scope:</label>
+          {/* Quick Actions & Ward Selector */}
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/listings"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-saffron text-pureWhite text-xs font-bold hover:bg-saffron-dark transition shadow-saffron-sm"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Post / Browse Jobs</span>
+            </Link>
+
+            <Link
+              href="/bookings"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-govBlue-900 text-pureWhite text-xs font-semibold hover:bg-govBlue-800 transition"
+            >
+              <ClipboardCheck className="w-4 h-4 text-saffron" />
+              <span>My Hires & Work</span>
+            </Link>
+
+            {groups.length > 0 && (
               <select
                 value={selectedGroupId}
                 onChange={handleGroupChange}
-                className="px-3 py-2 rounded-xl bg-midnight-900 border border-zinc-800 text-xs font-medium text-pureWhite focus:border-lime-neon focus:outline-none"
+                className="px-3 py-2.5 rounded-xl bg-lightBg border border-borderLight text-xs font-medium text-darkText focus:border-govBlue-800 focus:outline-none"
               >
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>
@@ -126,137 +172,161 @@ export default function DashboardPage() {
                   </option>
                 ))}
               </select>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+
+        {/* Worker Skills Banner (if any skills registered) */}
+        {user?.skills?.length > 0 && (
+          <div className="mb-8 p-4 rounded-2xl bg-lightBg border border-borderLight flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-mono font-bold text-govBlue-900 uppercase flex items-center gap-1.5 mr-1">
+                <Briefcase className="w-3.5 h-3.5 text-saffron" />
+                Verified Public Skills:
+              </span>
+              {user.skills.map((skill: string) => (
+                <span
+                  key={skill}
+                  className="px-2.5 py-1 rounded-full bg-pureWhite border border-borderLight text-xs font-medium text-bodyText"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+            
+          </div>
+        )}
 
         {/* Metrics Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-          {/* Card 1: Time Credit Balance */}
-          <div className="p-6 rounded-2xl glass-panel-lime border border-lime-neon/40 shadow-neon-sm">
-            <div className="flex items-center justify-between text-zinc-400 mb-2">
-              <span className="text-xs font-mono uppercase tracking-wider">Derived Balance</span>
-              <Clock className="w-4 h-4 text-lime-neon" />
+          {/* Card 1: Direct Settlement Volume */}
+          <div className="p-6 rounded-2xl gov-panel-saffron border border-saffron/40 shadow-saffron-sm">
+            <div className="flex items-center justify-between text-mutedText mb-2">
+              <span className="text-xs font-mono uppercase tracking-wider">Direct Work Volume</span>
+              <IndianRupee className="w-4 h-4 text-saffron" />
             </div>
-            <div className="text-3xl font-black font-mono text-lime-neon">{balance} Credits</div>
-            <span className="text-[11px] text-zinc-500 mt-1 block">
-              1 Hour = 1 Credit • Dynamically Audited
+            <div className="text-3xl font-black font-mono text-saffron">₹{totalSettled}</div>
+            <span className="text-[11px] text-mutedText mt-1 block">
+              ₹0 Platform Cut • Settled via UPI / Cash
             </span>
           </div>
 
-          {/* Card 2: Mutual Rating */}
-          <div className="p-6 rounded-2xl glass-panel border border-zinc-800">
-            <div className="flex items-center justify-between text-zinc-400 mb-2">
-              <span className="text-xs font-mono uppercase tracking-wider">Community Rating</span>
+          {/* Card 2: Mutual Trust Rating */}
+          <div className="p-6 rounded-2xl gov-panel border border-borderLight">
+            <div className="flex items-center justify-between text-mutedText mb-2">
+              <span className="text-xs font-mono uppercase tracking-wider">Mutual Trust Score</span>
               <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
             </div>
-            <div className="text-3xl font-black font-mono text-pureWhite">
-              {ratingSummary.averageRating > 0 ? `${ratingSummary.averageRating} / 5` : "Unrated"}
+            <div className="text-3xl font-black font-mono text-darkText">
+              {ratingSummary.averageRating > 0 ? `${ratingSummary.averageRating} / 5` : "New Profile"}
             </div>
-            <span className="text-[11px] text-zinc-500 mt-1 block">
-              {ratingSummary.totalReviews} verified post-booking reviews
+            <span className="text-[11px] text-mutedText mt-1 block">
+              {ratingSummary.totalReviews} verified post-job ratings
             </span>
           </div>
 
-          {/* Card 3: Group Active Members */}
-          <div className="p-6 rounded-2xl glass-panel border border-zinc-800">
-            <div className="flex items-center justify-between text-zinc-400 mb-2">
-              <span className="text-xs font-mono uppercase tracking-wider">Active Group Members</span>
-              <Users className="w-4 h-4 text-lime-bright" />
+          {/* Card 3: Verified Ward Neighbors */}
+          <div className="p-6 rounded-2xl gov-panel border border-borderLight">
+            <div className="flex items-center justify-between text-mutedText mb-2">
+              <span className="text-xs font-mono uppercase tracking-wider">Verified Ward Users</span>
+              <Users className="w-4 h-4 text-indiaGreen" />
             </div>
-            <div className="text-3xl font-black font-mono text-pureWhite">
-              {groupStats ? groupStats.activeMembers : "..."}
+            <div className="text-3xl font-black font-mono text-darkText">
+              {groupStats ? groupStats.activeMembers : "Active"}
             </div>
-            <span className="text-[11px] text-zinc-500 mt-1 block">
-              Vetted local cooperative members
+            <span className="text-[11px] text-mutedText mt-1 block">
+              e-KYC verified neighbors in {user?.ward || "your ward"}
             </span>
           </div>
 
-          {/* Card 4: Credits in Circulation */}
-          <div className="p-6 rounded-2xl glass-panel border border-zinc-800">
-            <div className="flex items-center justify-between text-zinc-400 mb-2">
-              <span className="text-xs font-mono uppercase tracking-wider">Circulating Volume</span>
-              <ShieldCheck className="w-4 h-4 text-lime-neon" />
+          {/* Card 4: Privacy & Safety Guard */}
+          <div className="p-6 rounded-2xl gov-panel border border-borderLight">
+            <div className="flex items-center justify-between text-mutedText mb-2">
+              <span className="text-xs font-mono uppercase tracking-wider">Address Privacy</span>
+              <ShieldCheck className="w-4 h-4 text-indiaGreen" />
             </div>
-            <div className="text-3xl font-black font-mono text-lime-bright">
-              {groupStats ? `${groupStats.creditsInCirculation} Credits` : "..."}
-            </div>
-            <span className="text-[11px] text-zinc-500 mt-1 block">
-              Total hours exchanged in group
+            <div className="text-3xl font-black font-mono text-indiaGreen">2-Stage</div>
+            <span className="text-[11px] text-mutedText mt-1 block">
+              Exact address unlocks only after worker hire
             </span>
           </div>
         </div>
 
-        {/* Append-Only Ledger Transaction Audit Table */}
-        <div className="rounded-3xl glass-panel border border-zinc-800 p-6 sm:p-8">
+        {/* Direct Settlement & Completed Work Log Table */}
+        <div className="rounded-3xl gov-panel border border-borderLight p-6 sm:p-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h2 className="text-xl font-bold text-pureWhite flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-lime-neon" />
-                <span>Personal Append-Only Ledger History</span>
+              <h2 className="text-xl font-bold text-govBlue-900 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-saffron" />
+                <span>Direct Settlement & Work Audit Log</span>
               </h2>
-              <p className="text-xs text-zinc-400 mt-1">
-                Every record is permanently audited. Balances are derived, never updated in place.
+              <p className="text-xs text-mutedText mt-1">
+                Verified record of completed jobs and direct peer-to-peer payouts (₹0 portal fee).
               </p>
             </div>
-            <div className="px-3 py-1 rounded-full bg-midnight-900 border border-zinc-800 text-xs font-mono text-zinc-400">
-              Total Entries: {ledgerHistory.length}
+            <div className="px-3 py-1 rounded-full bg-lightBg border border-borderLight text-xs font-mono text-mutedText">
+              Completed Records: {settlementHistory.length}
             </div>
           </div>
 
           {loading ? (
-            <div className="py-12 text-center text-xs font-mono text-zinc-500">
-              Auditing ledger transactions...
+            <div className="py-12 text-center text-xs font-mono text-mutedText">
+              Loading civic work records...
             </div>
-          ) : ledgerHistory.length === 0 ? (
+          ) : settlementHistory.length === 0 ? (
             <div className="py-12 text-center">
-              <Clock className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-              <p className="text-sm text-zinc-400">No time-credit transactions posted yet.</p>
-              <p className="text-xs text-zinc-500 mt-1">
-                Complete your first booking to record credits on the append-only ledger.
+              <Briefcase className="w-8 h-8 text-mutedText mx-auto mb-2" />
+              <p className="text-sm font-medium text-darkText">No completed jobs recorded yet.</p>
+              <p className="text-xs text-mutedText mt-1 mb-4">
+                Post a local task or apply to open jobs in {user?.ward || "your ward"} to get started.
               </p>
+              <Link
+                href="/listings"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-saffron text-pureWhite text-xs font-bold hover:bg-saffron-dark transition"
+              >
+                Explore Local Jobs
+              </Link>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-mono">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider">
-                    <th className="py-3 px-4">Transaction ID</th>
-                    <th className="py-3 px-4">Type</th>
-                    <th className="py-3 px-4">Amount</th>
-                    <th className="py-3 px-4">Counterparty</th>
-                    <th className="py-3 px-4">Co-op Group</th>
-                    <th className="py-3 px-4">Timestamp</th>
+                  <tr className="border-b border-borderLight text-mutedText uppercase tracking-wider">
+                    <th className="py-3 px-4">Work ID</th>
+                    <th className="py-3 px-4">Direction</th>
+                    <th className="py-3 px-4">Direct Payout</th>
+                    <th className="py-3 px-4">Verified Neighbor</th>
+                    <th className="py-3 px-4">Local Ward</th>
+                    <th className="py-3 px-4">Completed At</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/60">
-                  {ledgerHistory.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-midnight-900/40 transition">
-                      <td className="py-3 px-4 text-zinc-400 truncate max-w-[120px]">
+                <tbody className="divide-y divide-borderLight">
+                  {settlementHistory.map((tx) => (
+                    <tr key={tx.id} className="hover:bg-lightBlueBg/50 transition">
+                      <td className="py-3 px-4 text-mutedText truncate max-w-[120px]">
                         {tx.id.slice(0, 8)}...
                       </td>
                       <td className="py-3 px-4">
                         {tx.type === "CREDIT" ? (
-                          <span className="inline-flex items-center gap-1 text-lime-neon font-bold">
+                          <span className="inline-flex items-center gap-1 text-indiaGreen font-bold">
                             <ArrowDownLeft className="w-3.5 h-3.5" />
-                            RECEIVED
+                            EARNED (DIRECT)
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-red-400 font-bold">
-                            <ArrowUpRight className="w-3.5 h-3.5" />
-                            SENT
+                          <span className="inline-flex items-center gap-1 text-govBlue-900 font-bold">
+                            <ArrowUpRight className="w-3.5 h-3.5 text-saffron" />
+                            PAID DIRECTLY
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 font-bold text-pureWhite">
-                        {tx.type === "CREDIT" ? `+${tx.amount}` : `-${tx.amount}`} Credits
+                      <td className="py-3 px-4 font-bold text-darkText">₹{tx.amount}</td>
+                      <td className="py-3 px-4 text-bodyText">
+                        {tx.counterparty?.name || tx.counterparty?.email || "Verified Citizen"}
                       </td>
-                      <td className="py-3 px-4 text-zinc-300">
-                        {tx.counterparty?.name || tx.counterparty?.email || "Community Reserve"}
-                      </td>
-                      <td className="py-3 px-4 text-zinc-400">{tx.groupName || "Main Co-op"}</td>
-                      <td className="py-3 px-4 text-zinc-500">
-                        {new Date(tx.createdAt).toLocaleDateString()} {new Date(tx.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      <td className="py-3 px-4 text-mutedText">{tx.groupName || user?.ward || "Local Ward"}</td>
+                      <td className="py-3 px-4 text-mutedText">
+                        {new Date(tx.createdAt).toLocaleDateString()}{" "}
+                        {new Date(tx.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </td>
                     </tr>
                   ))}

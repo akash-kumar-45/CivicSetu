@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import "@/styles/globals.css";
+import "../styles/globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 
 export const metadata: Metadata = {
-  title: "Cooperative Time-Bank Platform | Community & Household Services",
+  title: "CivicSetu | Hyperlocal Direct Hiring & ₹0-Commission Work Portal",
   description:
-    "An egalitarian time-credit cooperative platform for mutual exchange of household and community services. 1 Hour = 1 Credit.",
+    "Government-backed hyperlocal civic portal connecting verified citizens and local workers with ₹0 commission, two-stage privacy, and direct settlement.",
 };
 
 export default function RootLayout({
@@ -14,8 +14,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-midnight-950 text-pureWhite antialiased selection:bg-lime-neon selection:text-midnight-950">
+    <html lang="en">
+      <body className="bg-pureWhite text-darkText antialiased selection:bg-saffron selection:text-pureWhite font-sans">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

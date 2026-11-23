@@ -58,24 +58,47 @@ export class BookingsService {
       throw new Error("You cannot book your own listing");
     }
 
-    // Verify both parties are ACTIVE members of the listing's group
-    const isRequesterActive = await this.verifyActiveMembership(requesterId, listing.groupId);
-    const isProviderActive = await this.verifyActiveMembership(providerId, listing.groupId);
+    // Prevent duplicate applications by the same worker on the same job
+    const existingBooking = await this.db.booking.findFirst({
+      where: {
+        listingId: listing.id,
+        requesterId,
+        providerId,
+        status: { in: ["REQUESTED", "ACCEPTED"] },
+      },
+    });
 
-    if (!isRequesterActive) {
-      throw new Error("Requester is not an active member of this cooperative group");
+    if (existingBooking) {
+      throw new Error(
+        existingBooking.status === "ACCEPTED"
+          ? "You have already been hired for this job"
+          : "You have already applied for this job and are awaiting owner approval"
+      );
     }
 
-    if (!isProviderActive) {
-      throw new Error("Provider is not an active member of this cooperative group");
+    // Enforce Direct Offer privacy
+
+// Enforce Direct Offer privacy
+    if (listing.visibility === "DIRECT" && listing.targetWorkerId !== callerUserId) {
+      throw new Error("Forbidden: This is a private direct job offer for another worker");
     }
 
-    // Calculate integer time credit amount (1 hour = hourlyCredits)
-    // Duration in minutes converted to credit units
-    const creditAmount = Math.max(
-      1,
-      Math.round((validated.durationMinutes / 60) * listing.hourlyCredits)
-    );
+    // Only enforce ward membership when the job is restricted to WARD_ONLY
+    if (listing.visibility === "WARD_ONLY" && listing.groupId) {
+      const isRequesterActive = await this.verifyActiveMembership(requesterId, listing.groupId);
+      const isProviderActive = await this.verifyActiveMembership(providerId, listing.groupId);
+
+      if (!isRequesterActive) {
+        throw new Error("Job owner is not an active member of this ward");
+      }
+
+      if (!isProviderActive) {
+        throw new Error("You must be an active member of this ward to apply for this job");
+      }
+    }
+
+    // Direct Rupee payout amount (₹0 commission)
+    const creditAmount = listing.hourlyCredits;
 
     const booking = await this.db.booking.create({
       data: {
@@ -107,61 +130,57 @@ export class BookingsService {
       throw new Error("Booking not found");
     }
 
-    // Only provider can accept
-    if (booking.providerId !== callerUserId) {
-      throw new Error("Forbidden: Only the provider can accept a booking");
+// Only the job owner (listing.ownerId) can accept an application/booking
+    if (booking.listing.ownerId !== callerUserId) {
+      throw new Error("Forbidden: Only the job owner can accept an applicant");
     }
 
     // State machine: only transition from REQUESTED
     if (booking.status !== "REQUESTED") {
       throw new Error(`Invalid state transition: Cannot accept a booking with status ${booking.status}`);
     }
+// Hire the selected worker, close the listing from further public applications,
+    // and decline any competing pending applicants for this same job.
+    const updated = await this.db.$transaction(async (tx: any) => {
+      const accepted = await tx.booking.update({
+        where: { id: bookingId },
+        data: { status: "ACCEPTED" },
+      });
 
-    // Enforce Overlap Rule:
-    // A provider cannot have two overlapping accepted bookings.
-    const newStart = booking.startsAt.getTime();
-    const newEnd = newStart + booking.durationMinutes * 60 * 1000;
+      await tx.booking.updateMany({
+        where: {
+          listingId: booking.listingId,
+          id: { not: bookingId },
+          status: "REQUESTED",
+        },
+        data: { status: "DECLINED" },
+      });
 
-    const activeBookings = await this.db.booking.findMany({
-      where: {
-        providerId: booking.providerId,
-        status: "ACCEPTED",
-        id: { not: booking.id },
-      },
-    });
+      await tx.listing.update({
+        where: { id: booking.listingId },
+        data: { active: false },
+      });
 
-    for (const b of activeBookings) {
-      const existingStart = b.startsAt.getTime();
-      const existingEnd = existingStart + b.durationMinutes * 60 * 1000;
-
-      // Overlap condition: start1 < end2 && start2 < end1
-      if (newStart < existingEnd && existingStart < newEnd) {
-        throw new Error("Provider has an overlapping accepted booking during this time slot");
-      }
-    }
-
-    const updated = await this.db.booking.update({
-      where: { id: bookingId },
-      data: { status: "ACCEPTED" },
+      return accepted;
     });
 
     return updated;
   }
 
-  async declineBooking(callerUserId: string, bookingId: string) {
+    async declineBooking(callerUserId: string, bookingId: string) {
     const booking = await this.db.booking.findUnique({
       where: { id: bookingId },
+      include: { listing: true },
     });
 
     if (!booking) {
       throw new Error("Booking not found");
     }
 
-    // Only provider can decline
-    if (booking.providerId !== callerUserId) {
-      throw new Error("Forbidden: Only the provider can decline a booking");
+    // Only the job owner (listing.ownerId) can decline an applicant
+    if (booking.listing.ownerId !== callerUserId) {
+      throw new Error("Forbidden: Only the job owner can decline an applicant");
     }
-
     // State machine: only transition from REQUESTED
     if (booking.status !== "REQUESTED") {
       throw new Error(`Invalid state transition: Cannot decline a booking with status ${booking.status}`);
@@ -188,8 +207,8 @@ export class BookingsService {
     // - Only the requester can cancel a requested booking.
     // - Either party can cancel an accepted one.
     if (booking.status === "REQUESTED") {
-      if (booking.requesterId !== callerUserId) {
-        throw new Error("Forbidden: Only the requester can cancel a requested booking");
+      if (booking.requesterId !== callerUserId && booking.providerId !== callerUserId) {
+        throw new Error("Forbidden: Only booking participants can withdraw this request");
       }
     } else if (booking.status === "ACCEPTED") {
       if (booking.requesterId !== callerUserId && booking.providerId !== callerUserId) {
@@ -227,24 +246,9 @@ export class BookingsService {
       throw new Error(`Invalid state transition: Cannot complete a booking with status ${booking.status}`);
     }
 
-    // Only after startsAt has passed
-    if (new Date() < booking.startsAt) {
-      throw new Error("Cannot complete booking: start time has not passed yet");
-    }
-
-    // Check requester has enough balance. A balance cannot go negative.
-    const requesterBalance = await this.ledgerService.getUserBalance(booking.requesterId, booking.listing.groupId);
-    if (requesterBalance < booking.creditAmount) {
-      throw new Error(
-        `Insufficient credit balance: Requester has ${requesterBalance} credits, but ${booking.creditAmount} credits are required.`
-      );
-    }
-
-    // Atomic execution in a single database transaction:
-    // Writes LedgerEntry (requester pays provider) inside the same database transaction as the status change.
-    // If either fails, both roll back.
+// Atomic execution in a single database transaction:
+    // Records direct settlement audit entry alongside COMPLETED status.
     const result = await this.db.$transaction(async (tx: any) => {
-      // Re-verify status inside transaction to prevent double completion
       const current = await tx.booking.findUnique({
         where: { id: bookingId },
       });
@@ -253,16 +257,20 @@ export class BookingsService {
         throw new Error("Booking is no longer in ACCEPTED status");
       }
 
-      // Update status to COMPLETED
+      // Update status to COMPLETED with dual-confirmation flags
       const updatedBooking = await tx.booking.update({
         where: { id: bookingId },
-        data: { status: "COMPLETED" },
+        data: {
+          status: "COMPLETED",
+          ownerCompleted: true,
+          workerCompleted: true,
+        },
       });
 
-      // Post append-only LedgerEntry
+      // Post append-only direct settlement audit record
       const ledgerEntry = await tx.ledgerEntry.create({
         data: {
-          groupId: booking.listing.groupId,
+          groupId: booking.listing.groupId || null,
           fromUserId: booking.requesterId,
           toUserId: booking.providerId,
           amount: booking.creditAmount,
@@ -309,7 +317,17 @@ export class BookingsService {
           : { OR: [{ requesterId: callerUserId }, { providerId: callerUserId }] }),
       },
       include: {
-        listing: { select: { id: true, title: true, category: true, groupId: true } },
+        listing: {
+          select: {
+            id: true,
+            ownerId: true,
+            title: true,
+            category: true,
+            groupId: true,
+            roughLocation: true,
+            exactAddress: true,
+          },
+        },
         requester: { select: { id: true, name: true, email: true } },
         provider: { select: { id: true, name: true, email: true } },
         ledgerEntry: true,
@@ -318,7 +336,22 @@ export class BookingsService {
       orderBy: { startsAt: "desc" },
     });
 
-    return bookings;
+    // Enforce Two-Stage Location Privacy: strip exactAddress until ACCEPTED/COMPLETED/REVIEWED
+    return bookings.map((b: any) => {
+      const unlocked =
+        b.requesterId === callerUserId ||
+        ["ACCEPTED", "COMPLETED", "REVIEWED"].includes(b.status);
+
+      return {
+        ...b,
+        listing: b.listing
+          ? {
+              ...b.listing,
+              exactAddress: unlocked ? b.listing.exactAddress : null,
+            }
+          : null,
+      };
+    });
   }
 }
 

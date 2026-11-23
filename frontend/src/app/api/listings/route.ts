@@ -2,41 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { listingsService } from "@coop/backend/server/services/listings.service";
-import { CreateListingSchema } from "@coop/backend/server/validators/listings.schema";
 import { ZodError } from "zod";
 
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    const userId = (session?.user as any)?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const viewerId = (session?.user as any)?.id;
 
     const { searchParams } = new URL(req.url);
-    const groupId = searchParams.get("groupId");
-    const type = searchParams.get("type") as "OFFER" | "REQUEST" | null;
+    const groupId = searchParams.get("groupId") || undefined;
     const category = searchParams.get("category") || undefined;
+    const search = searchParams.get("search") || undefined;
 
-    if (!groupId) {
-      return NextResponse.json(
-        { error: "groupId query parameter is required" },
-        { status: 400 }
-      );
-    }
-
-    const listings = await listingsService.listGroupListings(userId, groupId, {
-      type: type || undefined,
+    const listings = await listingsService.getListings(viewerId, {
+      groupId,
       category,
+      search,
     });
 
-    return NextResponse.json({ listings });
+    return NextResponse.json({ listings }, { status: 200 });
   } catch (error: any) {
-    const isForbidden = error?.message?.includes("Forbidden");
     return NextResponse.json(
-      { error: error?.message || "Failed to retrieve listings" },
-      { status: isForbidden ? 403 : 500 }
+      { error: error?.message || "Failed to fetch job listings" },
+      { status: 500 }
     );
   }
 }
@@ -44,17 +32,25 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    const userId = (session?.user as any)?.id;
+    const ownerId = (session?.user as any)?.id;
 
-    if (!userId) {
+    if (!ownerId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await req.json();
-    const validatedData = CreateListingSchema.parse(body);
+    const listing = await listingsService.createListing(ownerId, body);
 
-    const listing = await listingsService.createListing(userId, validatedData);
-    return NextResponse.json({ listing }, { status: 201 });
+    return NextResponse.json(
+      {
+        message:
+          listing.visibility === "DIRECT"
+            ? "Direct job offer sent to your trusted worker"
+            : "Job posted publicly to your local ward",
+        listing,
+      },
+      { status: 201 }
+    );
   } catch (error: any) {
     if (error instanceof ZodError) {
       return NextResponse.json(
@@ -63,10 +59,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const isForbidden = error?.message?.includes("Forbidden");
+    if (
+      error?.message?.includes("active member") ||
+      error?.message?.includes("trusted worker")
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
     return NextResponse.json(
-      { error: error?.message || "Failed to create listing" },
-      { status: isForbidden ? 403 : 400 }
+      { error: error?.message || "Failed to create job listing" },
+      { status: 500 }
     );
   }
 }

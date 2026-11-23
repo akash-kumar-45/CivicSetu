@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { CheckCircle2, Clock, ArrowRight, Shield, Star } from "lucide-react";
+import { CheckCircle2, ArrowRight } from "lucide-react";
 
 export function ScrollTriggeredDemo() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -9,52 +9,52 @@ export function ScrollTriggeredDemo() {
   const steps = [
     {
       num: 1,
-      title: "Service Offered",
-      role: "Alice (Electrician)",
-      desc: "Alice posts an OFFER listing in Maple Street Co-op: 'Ceiling Fan Repair at 1 credit/hour'.",
-      action: "Listing created on ledger",
+      title: "Job Posted (Rough Area)",
+      role: "Priya (Task Owner • ID Verified)",
+      desc: "Priya posts 'Ceiling Fan Repair & Wiring Check' (Est. ₹500) showing only her rough ward/locality—keeping her exact home address private.",
+      action: "Posted with rough locality • Exact address hidden",
     },
     {
       num: 2,
-      title: "Booking Requested",
-      role: "Bob (Resident)",
-      desc: "Bob needs repair at 10:00 AM. System creates booking in REQUESTED state for 1 credit.",
-      action: "REQUESTED state logged",
+      title: "Verified Workers Apply",
+      role: "Rohan (Local Electrician • ID Verified)",
+      desc: "Rohan views Priya's verified owner rating and applies. Our smart ranking sorts applicants by ward proximity, skill match, and past ratings.",
+      action: "Smart-matched by proximity & skill score",
     },
     {
       num: 3,
-      title: "Provider Accepts",
-      role: "Alice (Electrician)",
-      desc: "Alice accepts the request. System verifies Alice has no overlapping bookings during this slot.",
-      action: "ACCEPTED (overlap check passed)",
+      title: "Select & Unlock Address",
+      role: "Priya & Rohan",
+      desc: "Priya reviews Rohan's public profile and selects him. The exact house address unlocks, and Rohan checks Priya's safety rating before traveling.",
+      action: "Mutual trust confirmed • Exact location shared",
     },
     {
       num: 4,
-      title: "Service Completed",
-      role: "Alice (Electrician)",
-      desc: "After service ends, Alice marks completed. Atomic $transaction verifies Bob's balance and transfers 1 credit to Alice.",
-      action: "COMPLETED & LedgerEntry posted",
+      title: "Work Done & Direct Pay",
+      role: "Rohan & Priya",
+      desc: "Rohan completes the repair on site. Priya pays ₹500 directly via UPI or cash (₹0 platform fee), and both mark the job complete.",
+      action: "100% direct settlement • Dual completion logged",
     },
     {
       num: 5,
-      title: "Mutual Reviews",
-      role: "Alice & Bob",
-      desc: "Bob rates Alice 5 stars ('Great repair!'). Alice rates Bob 5 stars. Booking transitions to REVIEWED.",
-      action: "REVIEWED (100% complete)",
+      title: "Two-Way Trust Rating",
+      role: "Priya & Rohan",
+      desc: "Priya rates Rohan's work quality, and Rohan rates Priya's safety and fair payment—strengthening public trust records for the entire ward.",
+      action: "Mutual civic ratings updated on public profile",
     },
   ];
 
   return (
-    <div className="relative py-20 px-4 max-w-4xl mx-auto bg-midnight-950">
+    <div className="relative py-20 px-4 max-w-4xl mx-auto bg-pureWhite">
       <div className="text-center mb-12">
-        <span className="inline-block px-3 py-1 rounded-full bg-lime-neon/10 border border-lime-neon/40 text-lime-neon font-mono text-xs uppercase tracking-widest mb-3">
-          Interactive Walkthrough
+        <span className="inline-block px-3 py-1 rounded-full bg-saffron/10 border border-saffron/40 text-saffron font-mono text-xs uppercase tracking-widest mb-3">
+          How It Works
         </span>
-        <h2 className="text-3xl md:text-5xl font-black text-pureWhite tracking-tight">
-          Scroll-Triggered <span className="text-lime-neon">Booking Lifecycle</span>
+        <h2 className="text-3xl md:text-5xl font-black text-govBlue-900 tracking-tight">
+          Step-by-Step <span className="text-saffron">Direct Hiring Flow</span>
         </h2>
-        <p className="text-sm text-zinc-400 mt-2">
-          Step through the verified cooperative state machine from listing to atomic payment.
+        <p className="text-sm text-mutedText mt-2">
+          See how ID-verified citizens and local workers connect safely from rough-area posting to direct payment.
         </p>
       </div>
 
@@ -66,10 +66,10 @@ export function ScrollTriggeredDemo() {
             onClick={() => setCurrentStep(s.num)}
             className={`py-3 px-2 rounded-xl text-center border transition cursor-pointer ${
               currentStep === s.num
-                ? "bg-lime-neon/20 border-lime-neon text-lime-neon shadow-neon-sm"
+                ? "bg-saffron/20 border-saffron text-saffron shadow-saffron-sm"
                 : currentStep > s.num
-                ? "bg-midnight-900/80 border-zinc-700 text-pureWhite"
-                : "bg-midnight-900/30 border-zinc-800 text-zinc-500"
+                ? "bg-lightBg border-borderMedium text-darkText"
+                : "bg-lightBg/30 border-borderLight text-mutedText"
             }`}
           >
             <div className="text-xs font-mono font-bold">STEP {s.num}</div>
@@ -79,26 +79,26 @@ export function ScrollTriggeredDemo() {
       </div>
 
       {/* Step Detail Card */}
-      <div className="p-8 rounded-3xl glass-panel-lime border border-lime-neon/40 shadow-neon-md relative overflow-hidden">
+      <div className="p-8 rounded-3xl gov-panel-saffron border border-saffron/40 shadow-saffron-md relative overflow-hidden">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
-              <span className="px-3 py-1 rounded-full bg-lime-neon text-midnight-950 font-bold font-mono text-xs">
-                STATUS: {steps[currentStep - 1].title.toUpperCase()}
+              <span className="px-3 py-1 rounded-full bg-saffron text-pureWhite font-bold font-mono text-xs">
+                STEP {steps[currentStep - 1].num}: {steps[currentStep - 1].title.toUpperCase()}
               </span>
-              <span className="text-xs font-mono text-zinc-400">
-                Actor: {steps[currentStep - 1].role}
+              <span className="text-xs font-mono text-mutedText">
+                Active Role: {steps[currentStep - 1].role}
               </span>
             </div>
 
-            <h3 className="text-2xl font-bold text-pureWhite mt-2 mb-3">
+            <h3 className="text-2xl font-bold text-govBlue-900 mt-2 mb-3">
               {steps[currentStep - 1].title}
             </h3>
-            <p className="text-sm text-zinc-300 leading-relaxed max-w-xl">
+            <p className="text-sm text-bodyText leading-relaxed max-w-xl">
               {steps[currentStep - 1].desc}
             </p>
 
-            <div className="mt-6 flex items-center gap-2 text-xs font-mono text-lime-neon">
+            <div className="mt-6 flex items-center gap-2 text-xs font-mono text-indiaGreen">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{steps[currentStep - 1].action}</span>
             </div>
@@ -108,17 +108,17 @@ export function ScrollTriggeredDemo() {
             {currentStep < 5 ? (
               <button
                 onClick={() => setCurrentStep((c) => c + 1)}
-                className="py-3 px-4 rounded-xl bg-lime-neon text-midnight-950 font-bold hover:bg-lime-bright transition flex items-center justify-center gap-2 text-xs shadow-neon-sm cursor-pointer"
+                className="py-3 px-4 rounded-xl bg-saffron text-pureWhite font-bold hover:bg-saffron-dark transition flex items-center justify-center gap-2 text-xs shadow-saffron-sm cursor-pointer"
               >
-                <span>Trigger Next Step</span>
+                <span>Next Step</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <button
                 onClick={() => setCurrentStep(1)}
-                className="py-3 px-4 rounded-xl bg-midnight-900 border border-lime-neon/50 text-lime-neon font-bold hover:bg-lime-neon/10 transition flex items-center justify-center gap-2 text-xs cursor-pointer"
+                className="py-3 px-4 rounded-xl bg-pureWhite border border-saffron/50 text-saffron font-bold hover:bg-saffron/10 transition flex items-center justify-center gap-2 text-xs cursor-pointer"
               >
-                <span>Replay Lifecycle Demo</span>
+                <span>Replay Walkthrough</span>
               </button>
             )}
           </div>
