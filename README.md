@@ -1,99 +1,102 @@
-# Cooperative Gig Services Platform for Household & Community Services
+# CivicSetu — Hyperlocal Direct Hiring & ₹0-Commission Work Portal
 
-An egalitarian time-credit cooperative platform built with Next.js (App Router), React, TypeScript strict mode, Prisma, and PostgreSQL. Members of autonomous, isolated cooperative groups (such as neighborhoods, hostels, or housing societies) exchange services (cooking, cleaning, repairs, tutoring, babysitting) using **Time Credits**, where **1 hour of labor = 1 time credit**, regardless of skill. No real money, payment gateways, or currency speculation are involved.
-
----
-
-## Architecture Highlights & Visual Identity
-
-- **Color Scheme**: Midnight Black (`#050505` / `#06080C`), Pure White (`#FFFFFF`), Lime Green (`#00FF66` / `#39FF14`).
-- **UI/UX Interactions**:
-  - **Layered Parallax**: Multi-depth background grid and geometry translating across scroll velocities.
-  - **Pinned Heading 3D Card Zooms**: Sticky viewport section with 3D perspective card zoom on scroll.
-  - **Line-by-Line Reveal**: Staggered typography entrance animations.
-  - **Sideways Text Marquee**: Continuous sideways animated skill ticker.
-  - **3D Card Arc Carousel**: Rotational perspective carousel showcasing community listings.
-  - **Fixed 3D Interactive Model**: Three.js WebGL interactive 3D time-credit token with mouse-tracking and glowing particle orbit.
-  - **Stacking Cards**: Scroll-driven sticky stacked cards covering platform core protocols.
-  - **Focus Frame Sliders**: Interactive slider comparing traditional fee-heavy gig platforms against cooperative time banks.
-  - **Scroll-Triggered Demo**: 5-step interactive walkthrough of the booking state machine.
+CivicSetu is a full-stack hyperlocal civic work and service portal connecting verified citizens and skilled local workers within residential wards and neighborhood groups. Built with a **₹0-commission** peer-to-peer settlement model, **two-stage location privacy**, and **mutual trust ratings**, the platform enables safe, transparent neighborhood hiring without middleman fees.
 
 ---
 
-## Directory Structure
+## Key Features
 
-The repository maintains an explicit separation between `frontend` and `backend`:
+- **₹0-Commission Direct Hiring & Settlement:** Citizens and local workers negotiate and settle directly with zero platform commission fees, backed by transparent settlement logs (`LedgerEntry`).
+- **Two-Stage Location Privacy:** Public job listings (`OFFER` and `REQUEST`) only display an approximate neighborhood/ward (`roughLocation`). The exact street address (`exactAddress`) remains strictly hidden until the job owner explicitly approves a worker (`Hire Worker & Unlock Address`).
+- **e-KYC Identity & Ward Verification:** User registration captures ward/locality, phone contact, user intent (`OWNER`, `WORKER`, or `BOTH`), and government ID verification metadata (`AADHAAR`, `VOTER_ID`, or `DIGILOCKER`).
+- **End-to-End Booking Lifecycle:** Full state machine covering job application, owner approval/rejection, worker withdrawal, job completion (`COMPLETED`), and bilateral 1–5 star mutual trust reviews (`REVIEWED`).
+- **Ward & Neighborhood Groups + Trusted Circle:** Support for locality-based cooperative groups (`CoopGroup`), membership approvals, and trusted peer connections (`Friends` / `TrustedCirclePanel`).
+- **Graceful In-Memory Fallback:** Includes an automatic `InMemoryPrismaStore` fallback when no remote PostgreSQL `DATABASE_URL` is configured, allowing zero-config local demonstrations.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| :--- | :--- |
+| **Frontend Framework** | Next.js 14.2 (App Router), React 18, TypeScript |
+| **Styling & Motion** | Tailwind CSS, custom scroll/reveal UI components |
+| **Authentication** | NextAuth.js (`SessionProvider`, Credentials / JWT session) |
+| **Backend & Services** | Modular TypeScript service layer (`@coop/backend`), Zod schema validation |
+| **Database & ORM** | PostgreSQL (Neon Serverless), Prisma ORM |
+| **Monorepo Architecture** | npm Workspaces (`backend` + `frontend`) |
+
+---
+
+## Project Structure
 
 ```text
-se-project/
-├── frontend/                      # Next.js App Router Client & Presentation
-│   ├── src/
-│   │   ├── app/                   # App Router pages and API handlers
-│   │   │   ├── (auth)/            # Login & Register views
-│   │   │   ├── api/               # Thin route handlers delegating to backend services
-│   │   │   ├── bookings/          # State machine booking tracker
-│   │   │   ├── dashboard/         # Group statistics & personal ledger audit
-│   │   │   ├── groups/            # Cooperative groups catalog & admin controls
-│   │   │   ├── listings/          # Service catalog & booking request modal
-│   │   │   └── page.tsx           # Landing page with 3D models & animations
-│   │   ├── components/
-│   │   │   ├── 3d/                # Three.js 3D TimeCreditToken & floating particles
-│   │   │   ├── animated/          # Parallax, Arc Carousel, Stacking Cards, etc.
-│   │   │   └── shared/            # Navbar, Footer
-│   │   └── styles/                # Tailwind CSS with custom neon lime palettes
-├── backend/                       # Core Business Logic Services, Ledger & Prisma
+CivicSetu/
+├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma          # PostgreSQL data model
-│   │   └── migrations/            # Versioned SQL migrations committed to git
+│   │   ├── migrations/          # Chronological PostgreSQL migration history
+│   │   └── schema.prisma        # Database models (User, Listing, Booking, Group, Review, LedgerEntry)
 │   ├── src/
 │   │   ├── server/
-│   │   │   ├── db.ts              # Prisma singleton
-│   │   │   ├── auth/              # Bcrypt password hashing
-│   │   │   ├── services/          # Unit-testable business logic services
-│   │   │   └── validators/        # Zod validation schemas
-│   │   └── tests/                 # Vitest test suites (50 unit tests across 7 suites)
-├── e2e/                           # Playwright End-to-End Test Suite
-│   └── full-flow.spec.ts          # Complete 10-step lifecycle validation test
-├── docs/
-│   ├── ARCHITECTURE.md            # Module diagram, Prisma models, state machine
-│   └── LIMITATIONS.md             # Project report limitations and future work
-└── .env.example                   # Environment configuration template
+│   │   │   ├── auth/            # Authentication service & validation schemas
+│   │   │   ├── services/        # Business logic (listings, bookings, dashboard, groups)
+│   │   │   ├── validators/      # Zod request/input schemas
+│   │   │   └── db.ts            # Prisma singleton + InMemoryPrismaStore fallback
+│   │   └── index.ts             # Backend workspace entry exports
+│   └── tsconfig.json
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── (auth)/          # Login & e-KYC Registration pages
+│   │   │   ├── api/             # Next.js App Router REST endpoints (/auth, /listings, /bookings, /groups, /friends, /dashboard, /profile, /reviews, /ledger)
+│   │   │   ├── bookings/        # My Hires & Work lifecycle management
+│   │   │   ├── dashboard/       # Citizen/Worker overview & settlement stats
+│   │   │   ├── friends/         # Trusted Circle connections
+│   │   │   ├── groups/          # Ward & neighborhood groups
+│   │   │   ├── listings/        # Browse & post local service offers/requests
+│   │   │   ├── profile/         # User profile, skills & verification status
+│   │   │   ├── layout.tsx       # Root HTML layout with AuthProvider
+│   │   │   └── page.tsx         # Public landing page
+│   │   ├── components/          # UI components (animated, dashboard, providers, shared Navbar/Footer)
+│   │   ├── lib/                 # Auth configuration & client utilities
+│   │   ├── styles/              # Global Tailwind stylesheets
+│   │   └── types/               # TypeScript declarations (css.d.ts)
+│   ├── next.config.mjs
+│   └── tsconfig.json
+├── package.json                 # Root npm workspaces configuration
+└── tsconfig.base.json           # Shared TypeScript compiler settings
 ```
 
 ---
 
-## Getting Started
+## Local Development Setup
 
 ### 1. Prerequisites
-- **Node.js**: v18.0.0 or higher (v20+ recommended)
-- **npm** or **pnpm**
-- **PostgreSQL**: Local PostgreSQL instance or a serverless [Neon](https://neon.tech) database.
+- **Node.js** `v18.18+` or `v20+`
+- **npm** `v9+`
+- A **PostgreSQL** database URL (e.g., [Neon](https://neon.tech)) — *optional for local demo mode, which automatically uses the built-in in-memory store if no remote `DATABASE_URL` is set.*
 
-### 2. Environment Configuration
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-Update the required variables:
-- `DATABASE_URL`: Your PostgreSQL connection string.
-- `NEXTAUTH_SECRET`: A secure random 32-character string.
-- `NEXTAUTH_URL`: `http://localhost:3000` (in development).
-
-### 3. Install Dependencies
+### 2. Install Dependencies
+From the root `CivicSetu/` directory:
 ```bash
 npm install
 ```
 
-### 4. Database Setup & Prisma Client Generation
-```bash
-# Generate the Prisma Client
-npm run prisma:generate
-
-# Apply migrations to your PostgreSQL database
-npm run prisma:migrate
+### 3. Configure Environment Variables
+Create a `.env` file in the project root (and/or `frontend/.env`) based on `.env.example`:
+```env
+DATABASE_URL="postgresql://USER:PASSWORD@HOST.neon.tech/neondb?sslmode=require"
+NEXTAUTH_SECRET="your-32-character-random-secret"
+NEXTAUTH_URL="http://localhost:3000"
 ```
 
-### 5. Running the Application
+### 4. Generate Prisma Client & Sync Database
+```bash
+npx prisma generate --schema=backend/prisma/schema.prisma
+npx prisma db push --schema=backend/prisma/schema.prisma
+```
+
+### 5. Run the Development Server
 ```bash
 npm run dev
 ```
@@ -101,46 +104,19 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## Running the Tests
+## Production Build & Deployment (Vercel + Neon)
 
-### Unit Tests (Vitest)
-Unit tests cover all business rules across auth, groups, listings, bookings state machine, balance arithmetic, and reviews:
-```bash
-npm test
-```
-All 50 unit tests across 7 test suites run in isolation.
-
-### End-to-End Test (Playwright)
-Validates the full lifecycle (registration $\rightarrow$ group creation $\rightarrow$ join request $\rightarrow$ admin approval $\rightarrow$ listing creation $\rightarrow$ booking request $\rightarrow$ acceptance $\rightarrow$ atomic completion & ledger settlement $\rightarrow$ mutual review):
-```bash
-npx playwright test
-```
-
-### Production Build
-Verifies TypeScript strict mode and Next.js optimization:
+### Verify Production Build Locally
 ```bash
 npm run build
 ```
+This compiles `@coop/backend` (`tsc`) followed by `@coop/frontend` (`next build`).
 
----
-
-## Booking State Machine Rules
-
-1. `requested` $\rightarrow$ `accepted` $\rightarrow$ `completed` $\rightarrow$ `reviewed`
-2. `requested` $\rightarrow$ `declined`
-3. `requested` or `accepted` $\rightarrow$ `cancelled`
-
-- Only the provider can accept or decline.
-- Only the requester can cancel a `requested` booking; either party can cancel an `accepted` booking.
-- Providers cannot hold two overlapping `accepted` bookings.
-- Completion can only occur after `startsAt` has passed and executes an atomic `$transaction` that verifies requester balance and writes the `LedgerEntry`.
-
----
-
-## Deployment to Vercel with Neon Database
-
-1. Create a serverless PostgreSQL database on [Neon](https://neon.tech).
-2. Set `DATABASE_URL` in your Vercel project environment settings.
-3. Set `NEXTAUTH_SECRET` and `NEXTAUTH_URL` (your production URL).
-4. Run `npx prisma migrate deploy` in your build command or Neon console to apply migrations.
-5. Deploy repository directly to Vercel.
+### Deploying to Vercel
+1. Push the repository to GitHub.
+2. Import the repository into [Vercel](https://vercel.com) with the root directory set to `./`.
+3. Configure the **Build & Output Settings**:
+   - **Build Command:** `npx prisma generate --schema=backend/prisma/schema.prisma && npm run build`
+   - **Output Directory:** `frontend/.next`
+4. Add `DATABASE_URL`, `NEXTAUTH_SECRET`, and `NEXTAUTH_URL` in **Project Settings → Environment Variables**.
+5. Deploy.
